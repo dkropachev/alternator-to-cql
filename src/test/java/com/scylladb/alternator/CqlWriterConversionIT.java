@@ -1,15 +1,13 @@
 package com.scylladb.alternator;
 
 import static org.junit.Assert.*;
-import static org.junit.Assume.*;
-
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ColumnDefinition;
 import com.datastax.oss.driver.api.core.cql.Row;
 import java.net.InetSocketAddress;
 import java.util.*;
-import org.junit.After;
-import org.junit.Before;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
@@ -22,16 +20,16 @@ import software.amazon.awssdk.services.dynamodb.model.*;
  */
 public class CqlWriterConversionIT {
 
-  private DynamoDbClient dynamoClient;
-  private AlternatorDynamoDbClientWrapper wrapper;
-  private CqlSession cqlSession;
+  private static DynamoDbClient dynamoClient;
+  private static AlternatorDynamoDbClientWrapper wrapper;
+  private static CqlSession cqlSession;
 
-  private String sourceTable;
-  private String targetTable;
+  private static String sourceTable;
+  private static String targetTable;
 
-  @Before
-  public void setUp() {
-    assumeTrue(
+  @BeforeClass
+  public static void setUp() throws InterruptedException {
+    org.junit.Assume.assumeTrue(
         "Integration tests disabled. Set INTEGRATION_TESTS=true to enable.",
         IntegrationTestConfig.ENABLED);
 
@@ -55,10 +53,13 @@ public class CqlWriterConversionIT {
             .withAuthCredentials(
                 IntegrationTestConfig.CQL_USERNAME, IntegrationTestConfig.CQL_PASSWORD)
             .build();
+
+    createTable(sourceTable);
+    createTable(targetTable);
   }
 
-  @After
-  public void tearDown() {
+  @AfterClass
+  public static void tearDown() {
     if (dynamoClient != null) {
       for (String t : new String[] {sourceTable, targetTable}) {
         if (t != null) {
@@ -81,8 +82,6 @@ public class CqlWriterConversionIT {
   /** Reads back a row written via the DynamoDB API using CQL and verifies it is non-null. */
   @Test
   public void testReadRow() throws Exception {
-    createTable(sourceTable);
-
     Map<String, AttributeValue> item = buildItem("read-1", "/data/chunk.parquet", 0, 65536);
     dynamoClient.putItem(PutItemRequest.builder().tableName(sourceTable).item(item).build());
 
@@ -103,8 +102,6 @@ public class CqlWriterConversionIT {
   /** Returns null for a partition key that does not exist. */
   @Test
   public void testReadRowReturnsNullForMissing() throws Exception {
-    createTable(sourceTable);
-
     Row row = readRow(sourceTable, "pk", "nonexistent");
     assertNull("readRow should return null for a missing partition key", row);
   }
@@ -115,9 +112,6 @@ public class CqlWriterConversionIT {
    */
   @Test
   public void testInsertWithTimestamp() throws Exception {
-    createTable(sourceTable);
-    createTable(targetTable);
-
     Map<String, AttributeValue> item = buildItem("clone-1", "/data/important.parquet", 100, 200000);
     dynamoClient.putItem(PutItemRequest.builder().tableName(sourceTable).item(item).build());
 
@@ -153,9 +147,6 @@ public class CqlWriterConversionIT {
    */
   @Test
   public void testTimestampOrdering() throws Exception {
-    createTable(sourceTable);
-    createTable(targetTable);
-
     long olderMicros = 1700000000000L * 1000L;
     long newerMicros = 1700000001000L * 1000L;
 
@@ -257,7 +248,7 @@ public class CqlWriterConversionIT {
 
   // --- Helpers ---
 
-  private void createTable(String name) throws InterruptedException {
+  private static void createTable(String name) throws InterruptedException {
     try {
       dynamoClient.deleteTable(DeleteTableRequest.builder().tableName(name).build());
       Thread.sleep(500);

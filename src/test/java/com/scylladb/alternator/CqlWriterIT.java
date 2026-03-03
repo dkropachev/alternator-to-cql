@@ -1,16 +1,14 @@
 package com.scylladb.alternator;
 
 import static org.junit.Assert.*;
-import static org.junit.Assume.*;
-
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ColumnDefinition;
 import com.datastax.oss.driver.api.core.cql.Row;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.logging.Logger;
-import org.junit.After;
-import org.junit.Before;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
@@ -28,19 +26,19 @@ public class CqlWriterIT {
 
   private static final Logger LOG = Logger.getLogger(CqlWriterIT.class.getName());
 
-  private DynamoDbClient dynamoClient;
-  private AlternatorDynamoDbClientWrapper wrapper;
-  private CqlSession cqlSession;
+  private static DynamoDbClient dynamoClient;
+  private static AlternatorDynamoDbClientWrapper wrapper;
+  private static CqlSession cqlSession;
 
   /** Table A — written via Alternator API (the reference/source). */
-  private String tableA;
+  private static String tableA;
 
   /** Table B — written via CQL with USING TIMESTAMP (the target). */
-  private String tableB;
+  private static String tableB;
 
-  @Before
-  public void setUp() {
-    assumeTrue(
+  @BeforeClass
+  public static void setUp() throws InterruptedException {
+    org.junit.Assume.assumeTrue(
         "Integration tests disabled. Set INTEGRATION_TESTS=true to enable.",
         IntegrationTestConfig.ENABLED);
 
@@ -64,10 +62,13 @@ public class CqlWriterIT {
             .withAuthCredentials(
                 IntegrationTestConfig.CQL_USERNAME, IntegrationTestConfig.CQL_PASSWORD)
             .build();
+
+    createTable(tableA);
+    createTable(tableB);
   }
 
-  @After
-  public void tearDown() {
+  @AfterClass
+  public static void tearDown() {
     if (dynamoClient != null) {
       for (String t : new String[] {tableA, tableB}) {
         if (t != null) {
@@ -90,14 +91,13 @@ public class CqlWriterIT {
   /** Baseline: write a CatalogRecord-shaped item via Alternator and read it back. */
   @Test
   public void testBaselineAlternatorWriteAndRead() throws Exception {
-    createTable(tableA);
-
     Map<String, AttributeValue> item =
-        buildCatalogItem("rec-1", "/data/chunk_001.parquet", 0, 65536, 1700000000000L, 2, 86400);
+        buildCatalogItem(
+            "baseline-1", "/data/chunk_001.parquet", 0, 65536, 1700000000000L, 2, 86400);
 
     dynamoClient.putItem(PutItemRequest.builder().tableName(tableA).item(item).build());
 
-    Map<String, AttributeValue> result = readViaAlternator(tableA, "rec-1");
+    Map<String, AttributeValue> result = readViaAlternator(tableA, "baseline-1");
     assertNotNull("Item should be readable via Alternator", result);
     assertFalse("Item should not be empty", result.isEmpty());
 
@@ -123,9 +123,6 @@ public class CqlWriterIT {
    */
   @Test
   public void testCqlWriteWithTimestampReadViaAlternator() throws Exception {
-    createTable(tableA);
-    createTable(tableB);
-
     // Write multiple items to table A via Alternator
     long ts1 = 1700000000000L;
     long ts2 = 1700000001000L;
@@ -200,9 +197,6 @@ public class CqlWriterIT {
    */
   @Test
   public void testNewerTimestampWins() throws Exception {
-    createTable(tableA);
-    createTable(tableB);
-
     long olderMillis = 1700000000000L;
     long newerMillis = 1700000001000L;
 
@@ -257,9 +251,6 @@ public class CqlWriterIT {
    */
   @Test
   public void testWriterClass() throws Exception {
-    createTable(tableA);
-    createTable(tableB);
-
     CqlWriter writer = new CqlWriter(cqlSession, tableB, "pk", "last_updated_millis");
 
     long ts1 = 1700000000000L;
@@ -328,9 +319,6 @@ public class CqlWriterIT {
    */
   @Test
   public void testWriterRejectsFutureTimestamp() throws Exception {
-    createTable(tableA);
-    createTable(tableB);
-
     CqlWriter writer = new CqlWriter(cqlSession, tableB, "pk", "last_updated_millis");
 
     long futureMillis = System.currentTimeMillis() + 3_600_000;
@@ -352,9 +340,6 @@ public class CqlWriterIT {
   /** Validate that future timestamps are rejected by the guard and no CQL write occurs. */
   @Test
   public void testRejectFutureTimestamp() throws Exception {
-    createTable(tableA);
-    createTable(tableB);
-
     long futureMillis = System.currentTimeMillis() + 3_600_000; // 1 hour in the future
     assertFalse("Future timestamp should be rejected", validateTimestamp(futureMillis));
 
@@ -402,9 +387,6 @@ public class CqlWriterIT {
    */
   @Test
   public void testBulkWriteWithTimestampOrdering() throws Exception {
-    createTable(tableA);
-    createTable(tableB);
-
     Random rng = new Random(42);
     int totalRecords = 10_000;
     int uniqueKeys = 2_000;
@@ -614,7 +596,7 @@ public class CqlWriterIT {
 
   // --- Helper methods ---
 
-  private void createTable(String name) throws InterruptedException {
+  private static void createTable(String name) throws InterruptedException {
     try {
       dynamoClient.deleteTable(DeleteTableRequest.builder().tableName(name).build());
       Thread.sleep(500);

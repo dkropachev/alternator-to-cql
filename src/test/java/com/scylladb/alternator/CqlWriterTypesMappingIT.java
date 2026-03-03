@@ -1,7 +1,6 @@
 package com.scylladb.alternator;
 
 import static org.junit.Assert.*;
-import static org.junit.Assume.*;
 
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ColumnDefinition;
@@ -10,8 +9,8 @@ import com.datastax.oss.driver.api.core.type.DataTypes;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import org.junit.After;
-import org.junit.Before;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
@@ -28,19 +27,19 @@ import software.amazon.awssdk.services.dynamodb.model.*;
  */
 public class CqlWriterTypesMappingIT {
 
-  private DynamoDbClient dynamoClient;
-  private AlternatorDynamoDbClientWrapper wrapper;
-  private CqlSession cqlSession;
+  private static DynamoDbClient dynamoClient;
+  private static AlternatorDynamoDbClientWrapper wrapper;
+  private static CqlSession cqlSession;
 
   /** Table A — written via Alternator API (the reference/source). */
-  private String tableA;
+  private static String tableA;
 
   /** Table B — written via CQL clone (the target). */
-  private String tableB;
+  private static String tableB;
 
-  @Before
-  public void setUp() {
-    assumeTrue(
+  @BeforeClass
+  public static void setUp() throws InterruptedException {
+    org.junit.Assume.assumeTrue(
         "Integration tests disabled. Set INTEGRATION_TESTS=true to enable.",
         IntegrationTestConfig.ENABLED);
 
@@ -64,10 +63,13 @@ public class CqlWriterTypesMappingIT {
             .withAuthCredentials(
                 IntegrationTestConfig.CQL_USERNAME, IntegrationTestConfig.CQL_PASSWORD)
             .build();
+
+    createTable(tableA);
+    createTable(tableB);
   }
 
-  @After
-  public void tearDown() {
+  @AfterClass
+  public static void tearDown() {
     if (dynamoClient != null) {
       for (String t : new String[] {tableA, tableB}) {
         if (t != null) {
@@ -544,7 +546,6 @@ public class CqlWriterTypesMappingIT {
 
   @Test
   public void testAllTypesInSingleItem() throws Exception {
-    createTables();
 
     Map<String, AttributeValue> item = new HashMap<>();
     item.put("pk", attr().s("all_types").build());
@@ -623,7 +624,6 @@ public class CqlWriterTypesMappingIT {
 
   @Test
   public void testPartitionKeyIsCqlText() throws Exception {
-    createTables();
 
     putItem(tableA, "pk_check", Map.of("val", attr().s("test").build()));
 
@@ -648,7 +648,6 @@ public class CqlWriterTypesMappingIT {
    * Alternator, and asserts all non-key attributes are identical.
    */
   private void assertRoundTrip(String pk, Map<String, AttributeValue> extraAttrs) throws Exception {
-    createTables();
 
     putItem(tableA, pk, extraAttrs);
 
@@ -718,16 +717,7 @@ public class CqlWriterTypesMappingIT {
 
   // --- Helpers ---
 
-  private boolean tablesCreated = false;
-
-  private void createTables() throws InterruptedException {
-    if (tablesCreated) return;
-    createTable(tableA);
-    createTable(tableB);
-    tablesCreated = true;
-  }
-
-  private void createTable(String name) throws InterruptedException {
+  private static void createTable(String name) throws InterruptedException {
     try {
       dynamoClient.deleteTable(DeleteTableRequest.builder().tableName(name).build());
       Thread.sleep(500);
