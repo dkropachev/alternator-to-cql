@@ -208,8 +208,7 @@ public class CqlWriterIT {
     Map<String, AttributeValue> olderItem =
         buildCatalogItem("ref-older", "/data/old_chunk.parquet", 0, 1000, olderMillis, 1, 3600);
     Map<String, AttributeValue> newerItem =
-        buildCatalogItem(
-            "ref-newer", "/data/new_chunk.parquet", 500, 9999, newerMillis, 5, 172800);
+        buildCatalogItem("ref-newer", "/data/new_chunk.parquet", 500, 9999, newerMillis, 5, 172800);
 
     dynamoClient.putItem(PutItemRequest.builder().tableName(tableA).item(olderItem).build());
     dynamoClient.putItem(PutItemRequest.builder().tableName(tableA).item(newerItem).build());
@@ -235,9 +234,7 @@ public class CqlWriterIT {
     for (String key : newerRef.keySet()) {
       if (key.equals("pk")) continue;
       assertEquals(
-          "Attribute '"
-              + key
-              + "' should reflect the newer write (newer timestamp wins)",
+          "Attribute '" + key + "' should reflect the newer write (newer timestamp wins)",
           newerRef.get(key),
           result.get(key));
     }
@@ -252,20 +249,16 @@ public class CqlWriterIT {
   }
 
   /**
-   * Exercises the {@link CqlWriter} class: write items to table A via the writer (which
-   * uses a staging table internally), then read them back via Alternator and compare with
-   * direct-written reference data.
+   * Exercises the {@link CqlWriter} class: write items to table A via the writer (which uses a
+   * staging table internally), then read them back via Alternator and compare with direct-written
+   * reference data.
    */
   @Test
   public void testWriterClass() throws Exception {
     createTable(tableA);
     createTable(tableB);
 
-    String stagingTable = tableA; // reuse table A as the staging table
-
-    CqlWriter writer =
-        new CqlWriter(
-            dynamoClient, cqlSession, stagingTable, tableB, "pk", "last_updated_millis");
+    CqlWriter writer = new CqlWriter(cqlSession, tableB, "pk", "last_updated_millis");
 
     long ts1 = 1700000000000L;
     long ts2 = 1700000001000L;
@@ -328,17 +321,15 @@ public class CqlWriterIT {
   }
 
   /**
-   * Validates that {@link CqlWriter#write} throws {@link IllegalArgumentException} for
-   * future timestamps.
+   * Validates that {@link CqlWriter#write} throws {@link IllegalArgumentException} for future
+   * timestamps.
    */
   @Test
   public void testWriterRejectsFutureTimestamp() throws Exception {
     createTable(tableA);
     createTable(tableB);
 
-    CqlWriter writer =
-        new CqlWriter(
-            dynamoClient, cqlSession, tableA, tableB, "pk", "last_updated_millis");
+    CqlWriter writer = new CqlWriter(cqlSession, tableB, "pk", "last_updated_millis");
 
     long futureMillis = System.currentTimeMillis() + 3_600_000;
     Map<String, AttributeValue> item =
@@ -348,9 +339,7 @@ public class CqlWriterIT {
       writer.write(item);
       fail("Expected IllegalArgumentException for future timestamp");
     } catch (IllegalArgumentException e) {
-      assertTrue(
-          "Exception message should mention 'future'",
-          e.getMessage().contains("future"));
+      assertTrue("Exception message should mention 'future'", e.getMessage().contains("future"));
     }
 
     // Verify nothing was written to table B
@@ -397,10 +386,11 @@ public class CqlWriterIT {
    * Writes 10,000 records with randomized data (including edge cases) and validates every single
    * one via the Alternator (DynamoDB) API.
    *
-   * <p>For each unique key, multiple versions are written with different {@code last_updated_millis}
-   * values — some with timestamps older than the current version ("looking at the past") and some
-   * with timestamps newer ("looking at the future"). Regardless of write order, the final result
-   * read via Alternator must always reflect the version with the highest {@code last_updated_millis}.
+   * <p>For each unique key, multiple versions are written with different {@code
+   * last_updated_millis} values — some with timestamps older than the current version ("looking at
+   * the past") and some with timestamps newer ("looking at the future"). Regardless of write order,
+   * the final result read via Alternator must always reflect the version with the highest {@code
+   * last_updated_millis}.
    *
    * <p>Strategy: each version gets a unique staging pk in table A (so all versions coexist), then
    * all versions are cloned to table B under the real target pk via CQL with {@code USING
@@ -510,8 +500,8 @@ public class CqlWriterIT {
 
         // Staging item uses unique stagingPk so all versions coexist in table A
         Map<String, AttributeValue> stagingItem =
-            buildCatalogItem(stagingPk, chunkPath, startByte, endByte, timestamps[v],
-                compressionVersion, ttl);
+            buildCatalogItem(
+                stagingPk, chunkPath, startByte, endByte, timestamps[v], compressionVersion, ttl);
         stagingItems.add(stagingItem);
         writeSpecs.add(new String[] {stagingPk, targetPk});
 
@@ -520,8 +510,8 @@ public class CqlWriterIT {
           maxTs = timestamps[v];
           expectedItems.put(
               targetPk,
-              buildCatalogItem(targetPk, chunkPath, startByte, endByte, timestamps[v],
-                  compressionVersion, ttl));
+              buildCatalogItem(
+                  targetPk, chunkPath, startByte, endByte, timestamps[v], compressionVersion, ttl));
         }
       }
     }
@@ -550,8 +540,7 @@ public class CqlWriterIT {
     for (int idx : indices) {
       String stagingPk = writeSpecs.get(idx)[0];
       String targetPk = writeSpecs.get(idx)[1];
-      long lastUpdatedMillis =
-          Long.parseLong(stagingItems.get(idx).get("last_updated_millis").n());
+      long lastUpdatedMillis = Long.parseLong(stagingItems.get(idx).get("last_updated_millis").n());
       long timestampMicros = lastUpdatedMillis * 1000L;
 
       Row cqlRow = readCqlRow(tableA, stagingPk);
@@ -615,19 +604,10 @@ public class CqlWriterIT {
     }
 
     if (failures > 0) {
-      fail(
-          failures
-              + " field mismatches across "
-              + uniqueKeys
-              + " keys:\n"
-              + failureLog);
+      fail(failures + " field mismatches across " + uniqueKeys + " keys:\n" + failureLog);
     }
     LOG.info(
-        "All "
-            + uniqueKeys
-            + " keys validated successfully ("
-            + totalRecords
-            + " total writes)");
+        "All " + uniqueKeys + " keys validated successfully (" + totalRecords + " total writes)");
   }
 
   // --- Helper methods ---
@@ -643,8 +623,7 @@ public class CqlWriterIT {
     dynamoClient.createTable(
         CreateTableRequest.builder()
             .tableName(name)
-            .keySchema(
-                KeySchemaElement.builder().attributeName("pk").keyType(KeyType.HASH).build())
+            .keySchema(KeySchemaElement.builder().attributeName("pk").keyType(KeyType.HASH).build())
             .attributeDefinitions(
                 AttributeDefinition.builder()
                     .attributeName("pk")
@@ -686,8 +665,7 @@ public class CqlWriterIT {
   private Row readCqlRow(String table, String pkValue) {
     String ks = "alternator_" + table;
     return cqlSession
-        .execute(
-            String.format("SELECT * FROM \"%s\".\"%s\" WHERE pk = ?", ks, table), pkValue)
+        .execute(String.format("SELECT * FROM \"%s\".\"%s\" WHERE pk = ?", ks, table), pkValue)
         .one();
   }
 

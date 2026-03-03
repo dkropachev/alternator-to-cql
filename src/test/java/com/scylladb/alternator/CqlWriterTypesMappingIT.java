@@ -6,10 +6,8 @@ import static org.junit.Assume.*;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ColumnDefinition;
 import com.datastax.oss.driver.api.core.cql.Row;
-import com.datastax.oss.driver.api.core.type.DataType;
 import com.datastax.oss.driver.api.core.type.DataTypes;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.junit.After;
@@ -111,7 +109,8 @@ public class CqlWriterTypesMappingIT {
 
   @Test
   public void testStringEmoji() throws Exception {
-    assertRoundTrip("s_emoji", Map.of("val", attr().s("\ud83d\ude00\ud83d\udd25\ud83c\udf0d").build()));
+    assertRoundTrip(
+        "s_emoji", Map.of("val", attr().s("\ud83d\ude00\ud83d\udd25\ud83c\udf0d").build()));
   }
 
   @Test
@@ -160,26 +159,22 @@ public class CqlWriterTypesMappingIT {
 
   @Test
   public void testNumberIntMax() throws Exception {
-    assertRoundTrip(
-        "n_intmax", Map.of("val", attr().n(String.valueOf(Integer.MAX_VALUE)).build()));
+    assertRoundTrip("n_intmax", Map.of("val", attr().n(String.valueOf(Integer.MAX_VALUE)).build()));
   }
 
   @Test
   public void testNumberIntMin() throws Exception {
-    assertRoundTrip(
-        "n_intmin", Map.of("val", attr().n(String.valueOf(Integer.MIN_VALUE)).build()));
+    assertRoundTrip("n_intmin", Map.of("val", attr().n(String.valueOf(Integer.MIN_VALUE)).build()));
   }
 
   @Test
   public void testNumberLongMax() throws Exception {
-    assertRoundTrip(
-        "n_longmax", Map.of("val", attr().n(String.valueOf(Long.MAX_VALUE)).build()));
+    assertRoundTrip("n_longmax", Map.of("val", attr().n(String.valueOf(Long.MAX_VALUE)).build()));
   }
 
   @Test
   public void testNumberLongMin() throws Exception {
-    assertRoundTrip(
-        "n_longmin", Map.of("val", attr().n(String.valueOf(Long.MIN_VALUE)).build()));
+    assertRoundTrip("n_longmin", Map.of("val", attr().n(String.valueOf(Long.MIN_VALUE)).build()));
   }
 
   @Test
@@ -207,8 +202,7 @@ public class CqlWriterTypesMappingIT {
 
   @Test
   public void testNumberVerySmallDecimal() throws Exception {
-    assertRoundTrip(
-        "n_smalldec", Map.of("val", attr().n("0.00000000000000000001").build()));
+    assertRoundTrip("n_smalldec", Map.of("val", attr().n("0.00000000000000000001").build()));
   }
 
   @Test
@@ -223,8 +217,7 @@ public class CqlWriterTypesMappingIT {
 
   @Test
   public void testNumberTypicalTimestamp() throws Exception {
-    assertRoundTrip(
-        "n_timestamp", Map.of("val", attr().n("1700000000000").build()));
+    assertRoundTrip("n_timestamp", Map.of("val", attr().n("1700000000000").build()));
   }
 
   // ==================== Binary (B) ====================
@@ -232,8 +225,7 @@ public class CqlWriterTypesMappingIT {
   @Test
   public void testBinaryNormal() throws Exception {
     byte[] data = "binary data here".getBytes(StandardCharsets.UTF_8);
-    assertRoundTrip(
-        "b_normal", Map.of("val", attr().b(SdkBytes.fromByteArray(data)).build()));
+    assertRoundTrip("b_normal", Map.of("val", attr().b(SdkBytes.fromByteArray(data)).build()));
   }
 
   @Test
@@ -258,8 +250,7 @@ public class CqlWriterTypesMappingIT {
   public void testBinaryAllOnes() throws Exception {
     byte[] ones = new byte[256];
     Arrays.fill(ones, (byte) 0xFF);
-    assertRoundTrip(
-        "b_ones", Map.of("val", attr().b(SdkBytes.fromByteArray(ones)).build()));
+    assertRoundTrip("b_ones", Map.of("val", attr().b(SdkBytes.fromByteArray(ones)).build()));
   }
 
   @Test
@@ -276,8 +267,7 @@ public class CqlWriterTypesMappingIT {
   public void testBinaryLarge() throws Exception {
     byte[] large = new byte[64 * 1024]; // 64KB
     new Random(42).nextBytes(large);
-    assertRoundTrip(
-        "b_large", Map.of("val", attr().b(SdkBytes.fromByteArray(large)).build()));
+    assertRoundTrip("b_large", Map.of("val", attr().b(SdkBytes.fromByteArray(large)).build()));
   }
 
   // ==================== Boolean (BOOL) ====================
@@ -303,8 +293,7 @@ public class CqlWriterTypesMappingIT {
 
   @Test
   public void testStringSetMultiple() throws Exception {
-    assertRoundTrip(
-        "ss_multi", Map.of("val", attr().ss("alpha", "beta", "gamma").build()));
+    assertRoundTrip("ss_multi", Map.of("val", attr().ss("alpha", "beta", "gamma").build()));
   }
 
   @Test
@@ -315,14 +304,12 @@ public class CqlWriterTypesMappingIT {
   @Test
   public void testStringSetWithUnicode() throws Exception {
     assertRoundTrip(
-        "ss_unicode",
-        Map.of("val", attr().ss("\u00e9l\u00e8ve", "\u4e16\u754c", "plain").build()));
+        "ss_unicode", Map.of("val", attr().ss("\u00e9l\u00e8ve", "\u4e16\u754c", "plain").build()));
   }
 
   @Test
   public void testStringSetWithEmptyString() throws Exception {
-    assertRoundTrip(
-        "ss_empty_elem", Map.of("val", attr().ss("", "notempty").build()));
+    assertRoundTrip("ss_empty_elem", Map.of("val", attr().ss("", "notempty").build()));
   }
 
   @Test
@@ -331,22 +318,19 @@ public class CqlWriterTypesMappingIT {
     for (int i = 0; i < 100; i++) {
       items.add("item_" + i);
     }
-    assertRoundTrip(
-        "ss_large", Map.of("val", attr().ss(items).build()));
+    assertRoundTrip("ss_large", Map.of("val", attr().ss(items).build()));
   }
 
   // ==================== Number Set (NS) ====================
 
   @Test
   public void testNumberSetIntegers() throws Exception {
-    assertRoundTrip(
-        "ns_ints", Map.of("val", attr().ns("1", "2", "3", "100").build()));
+    assertRoundTrip("ns_ints", Map.of("val", attr().ns("1", "2", "3", "100").build()));
   }
 
   @Test
   public void testNumberSetDecimals() throws Exception {
-    assertRoundTrip(
-        "ns_dec", Map.of("val", attr().ns("1.5", "2.7", "3.14").build()));
+    assertRoundTrip("ns_dec", Map.of("val", attr().ns("1.5", "2.7", "3.14").build()));
   }
 
   @Test
@@ -379,7 +363,9 @@ public class CqlWriterTypesMappingIT {
   public void testBinarySetSingle() throws Exception {
     assertRoundTrip(
         "bs_single",
-        Map.of("val", attr().bs(SdkBytes.fromByteArray(new byte[] {(byte) 0xAA, (byte) 0xBB})).build()));
+        Map.of(
+            "val",
+            attr().bs(SdkBytes.fromByteArray(new byte[] {(byte) 0xAA, (byte) 0xBB})).build()));
   }
 
   @Test
@@ -400,14 +386,12 @@ public class CqlWriterTypesMappingIT {
 
   @Test
   public void testListEmpty() throws Exception {
-    assertRoundTrip(
-        "l_empty", Map.of("val", attr().l(Collections.emptyList()).build()));
+    assertRoundTrip("l_empty", Map.of("val", attr().l(Collections.emptyList()).build()));
   }
 
   @Test
   public void testListSingleString() throws Exception {
-    assertRoundTrip(
-        "l_single", Map.of("val", attr().l(attr().s("only").build()).build()));
+    assertRoundTrip("l_single", Map.of("val", attr().l(attr().s("only").build()).build()));
   }
 
   @Test
@@ -435,9 +419,7 @@ public class CqlWriterTypesMappingIT {
             attr()
                 .l(
                     attr().s("outer").build(),
-                    attr()
-                        .l(attr().s("inner1").build(), attr().s("inner2").build())
-                        .build())
+                    attr().l(attr().s("inner1").build(), attr().s("inner2").build()).build())
                 .build()));
   }
 
@@ -477,8 +459,7 @@ public class CqlWriterTypesMappingIT {
 
   @Test
   public void testMapEmpty() throws Exception {
-    assertRoundTrip(
-        "m_empty", Map.of("val", attr().m(Collections.emptyMap()).build()));
+    assertRoundTrip("m_empty", Map.of("val", attr().m(Collections.emptyMap()).build()));
   }
 
   @Test
@@ -507,10 +488,7 @@ public class CqlWriterTypesMappingIT {
             attr()
                 .m(
                     Map.of(
-                        "outer",
-                        attr()
-                            .m(Map.of("inner", attr().s("deep_value").build()))
-                            .build()))
+                        "outer", attr().m(Map.of("inner", attr().s("deep_value").build())).build()))
                 .build()));
   }
 
@@ -531,10 +509,7 @@ public class CqlWriterTypesMappingIT {
         Map.of(
             "val",
             attr()
-                .m(
-                    Map.of(
-                        "items",
-                        attr().l(attr().s("a").build(), attr().s("b").build()).build()))
+                .m(Map.of("items", attr().l(attr().s("a").build(), attr().s("b").build()).build()))
                 .build()));
   }
 
@@ -585,12 +560,8 @@ public class CqlWriterTypesMappingIT {
                 SdkBytes.fromByteArray(new byte[] {0x01}),
                 SdkBytes.fromByteArray(new byte[] {0x02}))
             .build());
-    item.put(
-        "list_attr",
-        attr().l(attr().s("item1").build(), attr().n("2").build()).build());
-    item.put(
-        "map_attr",
-        attr().m(Map.of("key1", attr().s("val1").build())).build());
+    item.put("list_attr", attr().l(attr().s("item1").build(), attr().n("2").build()).build());
+    item.put("map_attr", attr().m(Map.of("key1", attr().s("val1").build())).build());
 
     dynamoClient.putItem(PutItemRequest.builder().tableName(tableA).item(item).build());
 
@@ -719,8 +690,7 @@ public class CqlWriterTypesMappingIT {
 
     Row srcRow =
         cqlSession
-            .execute(
-                String.format("SELECT * FROM \"%s\".\"%s\" WHERE pk = ?", srcKs, tableA), pk)
+            .execute(String.format("SELECT * FROM \"%s\".\"%s\" WHERE pk = ?", srcKs, tableA), pk)
             .one();
     assertNotNull("Source row pk=" + pk + " should be readable via CQL", srcRow);
 
@@ -766,8 +736,7 @@ public class CqlWriterTypesMappingIT {
     dynamoClient.createTable(
         CreateTableRequest.builder()
             .tableName(name)
-            .keySchema(
-                KeySchemaElement.builder().attributeName("pk").keyType(KeyType.HASH).build())
+            .keySchema(KeySchemaElement.builder().attributeName("pk").keyType(KeyType.HASH).build())
             .attributeDefinitions(
                 AttributeDefinition.builder()
                     .attributeName("pk")

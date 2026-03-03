@@ -16,9 +16,9 @@ import software.amazon.awssdk.services.dynamodb.model.*;
 
 /**
  * Integration test that validates the correctness of the DynamoDB-to-CQL conversion performed by
- * {@link CqlWriter}: items written via the DynamoDB API are read back via CQL, inserted
- * into a second table with {@code USING TIMESTAMP}, and compared against the originals to verify
- * data integrity and timestamp ordering.
+ * {@link CqlWriter}: items written via the DynamoDB API are read back via CQL, inserted into a
+ * second table with {@code USING TIMESTAMP}, and compared against the originals to verify data
+ * integrity and timestamp ordering.
  */
 public class CqlWriterConversionIT {
 
@@ -116,8 +116,7 @@ public class CqlWriterConversionIT {
     createTable(sourceTable);
     createTable(targetTable);
 
-    Map<String, AttributeValue> item =
-        buildItem("clone-1", "/data/important.parquet", 100, 200000);
+    Map<String, AttributeValue> item = buildItem("clone-1", "/data/important.parquet", 100, 200000);
     dynamoClient.putItem(PutItemRequest.builder().tableName(sourceTable).item(item).build());
 
     Row sourceRow = readRow(sourceTable, "pk", "clone-1");
@@ -159,10 +158,8 @@ public class CqlWriterConversionIT {
     long newerMicros = 1700000001000L * 1000L;
 
     // Write two different items to the source table
-    Map<String, AttributeValue> olderItem =
-        buildItem("older-ref", "/data/old.parquet", 0, 1000);
-    Map<String, AttributeValue> newerItem =
-        buildItem("newer-ref", "/data/new.parquet", 500, 9999);
+    Map<String, AttributeValue> olderItem = buildItem("older-ref", "/data/old.parquet", 0, 1000);
+    Map<String, AttributeValue> newerItem = buildItem("newer-ref", "/data/new.parquet", 500, 9999);
 
     dynamoClient.putItem(PutItemRequest.builder().tableName(sourceTable).item(olderItem).build());
     dynamoClient.putItem(PutItemRequest.builder().tableName(sourceTable).item(newerItem).build());
@@ -227,8 +224,7 @@ public class CqlWriterConversionIT {
     cqlSession.execute(cqlSession.prepare(cql).bind(colValues.toArray()));
   }
 
-  private void insertWithTimestampAndPk(
-      String table, Row row, String newPk, long timestampMicros) {
+  private void insertWithTimestampAndPk(String table, Row row, String newPk, long timestampMicros) {
     String keyspace = "alternator_" + table;
 
     List<String> colNames = new ArrayList<>();
@@ -270,8 +266,7 @@ public class CqlWriterConversionIT {
     dynamoClient.createTable(
         CreateTableRequest.builder()
             .tableName(name)
-            .keySchema(
-                KeySchemaElement.builder().attributeName("pk").keyType(KeyType.HASH).build())
+            .keySchema(KeySchemaElement.builder().attributeName("pk").keyType(KeyType.HASH).build())
             .attributeDefinitions(
                 AttributeDefinition.builder()
                     .attributeName("pk")
