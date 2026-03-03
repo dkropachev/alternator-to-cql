@@ -135,7 +135,7 @@ public class CqlWriter implements ItemWriter, AutoCloseable {
     }
 
     // 2. Build the :attrs map from non-key attributes (map<text, blob> in CQL)
-    Map<ByteBuffer, ByteBuffer> attrsMap =
+    Map<String, ByteBuffer> attrsMap =
         AlternatorSerializer.serializeAttrsMap(item, pkAttributeName);
 
     // 3. Insert into target table via CQL

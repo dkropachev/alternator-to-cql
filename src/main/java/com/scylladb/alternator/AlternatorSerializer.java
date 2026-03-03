@@ -39,30 +39,29 @@ public class AlternatorSerializer {
    * @param entry attribute name/value pair
    * @return map entry with serialized key and value as ByteBuffers
    */
-  public static Map.Entry<ByteBuffer, ByteBuffer> serializeEntry(
+  public static Map.Entry<String, ByteBuffer> serializeEntry(
       Map.Entry<String, AttributeValue> entry) {
-    ByteBuffer key = ByteBuffer.wrap(serializeAttributeName(entry.getKey()));
     ByteBuffer value = ByteBuffer.wrap(serializeValue(entry.getValue()));
-    return Map.entry(key, value);
+    return Map.entry(entry.getKey(), value);
   }
 
   /**
-   * Serializes a DynamoDB item's non-key attributes into the CQL {@code :attrs} {@code map<bytes,
-   * bytes>}.
+   * Serializes a DynamoDB item's non-key attributes into the CQL {@code :attrs} {@code map<text,
+   * blob>}.
    *
    * @param item the full DynamoDB item
    * @param excludeKeys attribute names to exclude (e.g. partition key, sort key)
    * @return the serialized {@code :attrs} map
    */
-  public static Map<ByteBuffer, ByteBuffer> serializeAttrsMap(
+  public static Map<String, ByteBuffer> serializeAttrsMap(
       Map<String, AttributeValue> item, String... excludeKeys) {
     Set<String> excluded = Set.of(excludeKeys);
-    Map<ByteBuffer, ByteBuffer> attrsMap = new HashMap<>();
+    Map<String, ByteBuffer> attrsMap = new HashMap<>();
     for (Map.Entry<String, AttributeValue> entry : item.entrySet()) {
       if (excluded.contains(entry.getKey())) {
         continue;
       }
-      Map.Entry<ByteBuffer, ByteBuffer> cqlEntry = serializeEntry(entry);
+      Map.Entry<String, ByteBuffer> cqlEntry = serializeEntry(entry);
       attrsMap.put(cqlEntry.getKey(), cqlEntry.getValue());
     }
     return attrsMap;
