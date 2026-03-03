@@ -65,8 +65,10 @@ wait-for-alternator:
 
 .PHONY: test-integration
 test-integration: scylla-start wait-for-alternator
+	$(eval ALTERNATOR_SECRET := $(shell docker exec alt-cql-scylla1-1 cqlsh scylla1 -u cassandra -p cassandra -e "SELECT salted_hash FROM system.roles WHERE role='cassandra'" 2>/dev/null | sed -n '4p' | tr -d ' '))
 	INTEGRATION_TESTS=true ALTERNATOR_HOST=172.39.0.2 ALTERNATOR_PORT=9998 ALTERNATOR_HTTPS_PORT=9999 ALTERNATOR_CA_CERT_PATH=$$(pwd)/test/scylla/db.crt \
-		${mvn} test -Dtest="**/*IT" -DfailIfNoTests=false -Dsurefire.timeout=300 || (make scylla-stop && exit 1)
+		CQL_USERNAME=cassandra CQL_PASSWORD=cassandra ALTERNATOR_ACCESS_KEY=cassandra ALTERNATOR_SECRET_KEY='$(ALTERNATOR_SECRET)' \
+		${mvn} test -Dtest="**/*IT" -DfailIfNoTests=false -Dsurefire.timeout=600 || (make scylla-stop && exit 1)
 	make scylla-stop
 
 .prepare-bin:

@@ -22,8 +22,11 @@ services:
       --ring-delay-ms 0
       --smp 2
       --memory 1G
+      --authenticator PasswordAuthenticator
+      --authorizer CassandraAuthorizer
+      --alternator-enforce-authorization true
     healthcheck:
-      test: [ "CMD", "cqlsh", "scylla1", "-e", "select * from system.local WHERE key='local'" ]
+      test: [ "CMD", "cqlsh", "scylla1", "-u", "cassandra", "-p", "cassandra", "-e", "select * from system.local WHERE key='local'" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -46,8 +49,11 @@ services:
       --ring-delay-ms 0
       --smp 2
       --memory 1G
+      --authenticator PasswordAuthenticator
+      --authorizer CassandraAuthorizer
+      --alternator-enforce-authorization true
     healthcheck:
-      test: [ "CMD", "cqlsh", "scylla2", "-e", "select * from system.local WHERE key='local'" ]
+      test: [ "CMD", "cqlsh", "scylla2", "-u", "cassandra", "-p", "cassandra", "-e", "select * from system.local WHERE key='local'" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -73,8 +79,11 @@ services:
       --ring-delay-ms 0
       --smp 2
       --memory 1G
+      --authenticator PasswordAuthenticator
+      --authorizer CassandraAuthorizer
+      --alternator-enforce-authorization true
     healthcheck:
-      test: [ "CMD", "cqlsh", "scylla3", "-e", "select * from system.local WHERE key='local'" ]
+      test: [ "CMD", "cqlsh", "scylla3", "-u", "cassandra", "-p", "cassandra", "-e", "select * from system.local WHERE key='local'" ]
       interval: 5s
       timeout: 5s
       retries: 10

@@ -52,6 +52,8 @@ public class CqlWriterConversionIT {
             .addContactPoint(
                 new InetSocketAddress(IntegrationTestConfig.HOST, IntegrationTestConfig.CQL_PORT))
             .withLocalDatacenter(IntegrationTestConfig.DATACENTER)
+            .withAuthCredentials(
+                IntegrationTestConfig.CQL_USERNAME, IntegrationTestConfig.CQL_PASSWORD)
             .build();
   }
 

@@ -43,6 +43,12 @@ public final class IntegrationTestConfig {
   public static final int CQL_PORT =
       Integer.parseInt(System.getenv().getOrDefault("ALTERNATOR_CQL_PORT", "9042"));
 
+  public static final String CQL_USERNAME =
+      System.getenv().getOrDefault("CQL_USERNAME", "cassandra");
+
+  public static final String CQL_PASSWORD =
+      System.getenv().getOrDefault("CQL_PASSWORD", "cassandra");
+
   public static final boolean ENABLED =
       Boolean.parseBoolean(System.getenv().getOrDefault("INTEGRATION_TESTS", "false"));
 
@@ -51,8 +57,15 @@ public final class IntegrationTestConfig {
   public static final URI HTTP_SEED_URI;
   public static final URI HTTPS_SEED_URI;
 
+  public static final String ALTERNATOR_ACCESS_KEY =
+      System.getenv().getOrDefault("ALTERNATOR_ACCESS_KEY", "cassandra");
+
+  public static final String ALTERNATOR_SECRET_KEY =
+      System.getenv().getOrDefault("ALTERNATOR_SECRET_KEY", "cassandra");
+
   public static final StaticCredentialsProvider CREDENTIALS =
-      StaticCredentialsProvider.create(AwsBasicCredentials.create("test", "test"));
+      StaticCredentialsProvider.create(
+          AwsBasicCredentials.create(ALTERNATOR_ACCESS_KEY, ALTERNATOR_SECRET_KEY));
 
   static {
     String caCertEnv = System.getenv("ALTERNATOR_CA_CERT_PATH");

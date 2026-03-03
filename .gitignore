@@ -12,6 +12,8 @@ html
 latex
 bin/
 
+test/scylla/db.*
+
 .java-version
 .flattened-pom.xml
 
