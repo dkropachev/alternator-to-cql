@@ -4,8 +4,6 @@ import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.CqlSessionBuilder;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
@@ -137,12 +135,8 @@ public class CqlWriter implements ItemWriter, AutoCloseable {
     }
 
     // 2. Build the :attrs map from non-key attributes (map<text, blob> in CQL)
-    Map<ByteBuffer, ByteBuffer> rawAttrsMap =
+    Map<ByteBuffer, ByteBuffer> attrsMap =
         AlternatorSerializer.serializeAttrsMap(item, pkAttributeName);
-    Map<String, ByteBuffer> attrsMap = new HashMap<>();
-    for (Map.Entry<ByteBuffer, ByteBuffer> e : rawAttrsMap.entrySet()) {
-      attrsMap.put(StandardCharsets.UTF_8.decode(e.getKey()).toString(), e.getValue());
-    }
 
     // 3. Insert into target table via CQL
     String targetKs = "alternator_" + targetTable;
