@@ -2,6 +2,7 @@ package com.scylladb.alternator;
 
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.CqlSessionBuilder;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Map;
@@ -25,6 +26,7 @@ public class CqlWriter implements ItemWriter, AutoCloseable {
   private final String targetTable;
   private final String pkAttributeName;
   private final String timestampAttributeName;
+  private final PreparedStatement preparedInsert;
 
   /**
    * Creates a new writer that manages its own CQL session.
@@ -60,6 +62,7 @@ public class CqlWriter implements ItemWriter, AutoCloseable {
     this.targetTable = targetTable;
     this.pkAttributeName = pkAttributeName;
     this.timestampAttributeName = timestampAttributeName;
+    this.preparedInsert = prepareInsert();
   }
 
   /**
@@ -81,6 +84,7 @@ public class CqlWriter implements ItemWriter, AutoCloseable {
     this.targetTable = targetTable;
     this.pkAttributeName = pkAttributeName;
     this.timestampAttributeName = timestampAttributeName;
+    this.preparedInsert = prepareInsert();
   }
 
   @Override
@@ -139,15 +143,18 @@ public class CqlWriter implements ItemWriter, AutoCloseable {
         AlternatorSerializer.serializeAttrsMap(item, pkAttributeName);
 
     // 3. Insert into target table via CQL
-    String targetKs = "alternator_" + targetTable;
     long timestampMicros = lastUpdatedMillis * 1000L;
 
+    cqlSession.execute(preparedInsert.bind(cqlPkValue, attrsMap, timestampMicros));
+  }
+
+  private PreparedStatement prepareInsert() {
+    String targetKs = "alternator_" + targetTable;
     String cql =
         String.format(
             "INSERT INTO \"%s\".\"%s\" (\"%s\", \":attrs\") VALUES (?, ?) USING TIMESTAMP ?",
             targetKs, targetTable, pkAttributeName);
-
-    cqlSession.execute(cqlSession.prepare(cql).bind(cqlPkValue, attrsMap, timestampMicros));
+    return cqlSession.prepare(cql);
   }
 
   private static Object toCqlPkValue(AttributeValue value) {
