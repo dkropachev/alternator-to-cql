@@ -12,6 +12,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
+import com.scylladb.alternator.PureCqlWriter.CqlType;
 
 /**
  * Integration test that writes data via the Alternator (DynamoDB) API to one table, then writes the
@@ -35,6 +36,12 @@ public class CqlWriterIT {
 
   /** Table B — written via CQL with USING TIMESTAMP (the target). */
   private static String tableB;
+
+  /** Table C — pure CQL table with explicit typed columns (no Alternator :attrs map). */
+  private static String tableC;
+
+  /** Keyspace for the pure CQL table C. */
+  private static String pureCqlKeyspace;
 
   @BeforeClass
   public static void setUp() throws InterruptedException {
@@ -65,6 +72,10 @@ public class CqlWriterIT {
 
     createTable(tableA);
     createTable(tableB);
+
+    pureCqlKeyspace = "purecql_" + suffix;
+    tableC = "catalog_" + suffix;
+    createPureCqlTable();
   }
 
   @AfterClass
@@ -78,6 +89,13 @@ public class CqlWriterIT {
             // ignore cleanup errors
           }
         }
+      }
+    }
+    if (pureCqlKeyspace != null && cqlSession != null) {
+      try {
+        cqlSession.execute(String.format("DROP KEYSPACE IF EXISTS \"%s\"", pureCqlKeyspace));
+      } catch (Exception e) {
+        // ignore cleanup errors
       }
     }
     if (cqlSession != null) {
@@ -707,5 +725,355 @@ public class CqlWriterIT {
                 .key(Map.of("pk", AttributeValue.builder().s(pkValue).build()))
                 .build());
     return resp.hasItem() && !resp.item().isEmpty() ? resp.item() : null;
+  }
+
+  /** Writes items via {@link PureCqlWriter} and reads them back via CQL to verify correctness. */
+  @Test
+  public void testPureCqlWriterClass() throws Exception {
+    PureCqlWriter writer =
+        new PureCqlWriter(
+            cqlSession, pureCqlKeyspace, tableC, "pk", "last_updated_millis",
+            buildCatalogColumns());
+
+    long ts1 = 1700000000000L;
+    long ts2 = 1700000001000L;
+    Map<String, AttributeValue> item1 =
+        buildCatalogItem("pcql-1", "/data/pure_one.parquet", 10, 20000, ts1, 2, 7200);
+    Map<String, AttributeValue> item2 =
+        buildCatalogItem("pcql-2", "/data/pure_two.parquet", 0, 50000, ts2, 4, 86400);
+
+    writer.write(item1);
+    writer.write(item2);
+
+    Row row1 = readPureCqlRow("pcql-1");
+    assertNotNull("Item pcql-1 should exist in pure CQL table", row1);
+    assertEquals("pcql-1", row1.getString("pk"));
+    assertEquals("/data/pure_one.parquet", row1.getString("chunk_path"));
+    assertEquals(10L, row1.getLong("start_byte_range"));
+    assertEquals(20000L, row1.getLong("end_byte_range"));
+    assertEquals(1700000000000L, row1.getLong("last_updated_millis"));
+    assertEquals(2, row1.getInt("compression_version"));
+    assertEquals(7200, row1.getInt("ttl"));
+
+    Row row2 = readPureCqlRow("pcql-2");
+    assertNotNull("Item pcql-2 should exist in pure CQL table", row2);
+    assertEquals("/data/pure_two.parquet", row2.getString("chunk_path"));
+    assertEquals(0L, row2.getLong("start_byte_range"));
+    assertEquals(50000L, row2.getLong("end_byte_range"));
+    assertEquals(1700000001000L, row2.getLong("last_updated_millis"));
+    assertEquals(4, row2.getInt("compression_version"));
+    assertEquals(86400, row2.getInt("ttl"));
+  }
+
+  /**
+   * Writes two items with the same pk but different timestamps to the pure CQL table. The newer
+   * timestamp should win regardless of write order.
+   */
+  @Test
+  public void testPureCqlWriterNewerTimestampWins() throws Exception {
+    PureCqlWriter writer =
+        new PureCqlWriter(
+            cqlSession, pureCqlKeyspace, tableC, "pk", "last_updated_millis",
+            buildCatalogColumns());
+
+    long olderMillis = 1700000000000L;
+    long newerMillis = 1700000001000L;
+
+    Map<String, AttributeValue> olderItem =
+        buildCatalogItem("pcql-conflict", "/data/old.parquet", 0, 1000, olderMillis, 1, 3600);
+    Map<String, AttributeValue> newerItem =
+        buildCatalogItem("pcql-conflict", "/data/new.parquet", 500, 9999, newerMillis, 5, 172800);
+
+    // Write newer first, then older — newer should still win
+    writer.write(newerItem);
+    writer.write(olderItem);
+
+    Row result = readPureCqlRow("pcql-conflict");
+    assertNotNull("Conflict target should exist", result);
+    assertEquals("/data/new.parquet", result.getString("chunk_path"));
+    assertEquals(500L, result.getLong("start_byte_range"));
+    assertEquals(9999L, result.getLong("end_byte_range"));
+    assertEquals(1700000001000L, result.getLong("last_updated_millis"));
+    assertEquals(5, result.getInt("compression_version"));
+    assertEquals(172800, result.getInt("ttl"));
+  }
+
+  /**
+   * Validates that {@link PureCqlWriter#write} throws {@link IllegalArgumentException} for future
+   * timestamps.
+   */
+  @Test
+  public void testPureCqlWriterRejectsFutureTimestamp() throws Exception {
+    PureCqlWriter writer =
+        new PureCqlWriter(
+            cqlSession, pureCqlKeyspace, tableC, "pk", "last_updated_millis",
+            buildCatalogColumns());
+
+    long futureMillis = System.currentTimeMillis() + 3_600_000;
+    Map<String, AttributeValue> item =
+        buildCatalogItem("pcql-future", "/data/f.parquet", 0, 100, futureMillis, 1, 3600);
+
+    try {
+      writer.write(item);
+      fail("Expected IllegalArgumentException for future timestamp");
+    } catch (IllegalArgumentException e) {
+      assertTrue("Exception message should mention 'future'", e.getMessage().contains("future"));
+    }
+
+    Row result = readPureCqlRow("pcql-future");
+    assertNull("Future-timestamped row should not have been written", result);
+  }
+
+  /**
+   * Writes the same items to an Alternator table (via DynamoDB API) and a pure CQL table (via
+   * {@link PureCqlWriter}), then reads both and asserts every field matches. Exercises all
+   * interesting data values:
+   *
+   * <ul>
+   *   <li>Text: empty, single char, spaces, Unicode BMP (CJK, accented), supplementary plane
+   *       (emoji), special chars (quotes, backslash, single quote), control chars (newline, tab,
+   *       carriage return, null byte), very long strings, path traversal, URL-like
+   *   <li>Bigint: zero, one, small, medium, large, near Long.MAX_VALUE, Long.MAX_VALUE
+   *   <li>Int: zero, one, small, medium, large, Integer.MAX_VALUE
+   * </ul>
+   */
+  @Test
+  public void testPureCqlWriterMatchesAlternator() throws Exception {
+    PureCqlWriter pureCqlWriter =
+        new PureCqlWriter(
+            cqlSession, pureCqlKeyspace, tableC, "pk", "last_updated_millis",
+            buildCatalogColumns());
+
+    long baseTs = System.currentTimeMillis() - 86_400_000L; // 24 hours ago
+
+    List<Map<String, AttributeValue>> testItems = new ArrayList<>();
+
+    // 0: zeros and empty string
+    testItems.add(buildCatalogItem("match-00", "", 0, 0, baseTs - 1000, 0, 0));
+
+    // 1: ones and single char
+    testItems.add(buildCatalogItem("match-01", "a", 1, 1, baseTs - 2000, 1, 1));
+
+    // 2: max bigint and max int
+    testItems.add(
+        buildCatalogItem(
+            "match-02", "max-values", Long.MAX_VALUE - 1, Long.MAX_VALUE, baseTs - 3000,
+            Integer.MAX_VALUE, Integer.MAX_VALUE));
+
+    // 3: Unicode BMP — CJK characters
+    testItems.add(
+        buildCatalogItem(
+            "match-03", "/data/日本語/世界.parquet", 100, 200, baseTs - 4000, 1, 3600));
+
+    // 4: Unicode BMP — accented Latin
+    testItems.add(
+        buildCatalogItem(
+            "match-04", "/données/élève/résumé.parquet", 256, 512, baseTs - 5000, 2, 1800));
+
+    // 5: Unicode supplementary plane — emoji
+    testItems.add(
+        buildCatalogItem(
+            "match-05", "/data/\uD83D\uDD25\uD83D\uDE80/\uD83D\uDCC1.parquet", 500, 9999,
+            baseTs - 6000, 5, 7200));
+
+    // 6: double quote, backslash, colon, braces, pipe
+    testItems.add(
+        buildCatalogItem(
+            "match-06", "quote\"slash\\colon:brace{}pipe|", 42, 4242, baseTs - 7000, 10, 86400));
+
+    // 7: single quote (CQL-sensitive)
+    testItems.add(
+        buildCatalogItem(
+            "match-07", "it's a single 'quote' test", 77, 777, baseTs - 8000, 3, 600));
+
+    // 8: newline, tab, carriage return
+    testItems.add(
+        buildCatalogItem(
+            "match-08", "line1\nline2\ttab\rreturn", 10, 20, baseTs - 9000, 1, 1));
+
+    // 9: null byte embedded
+    testItems.add(
+        buildCatalogItem(
+            "match-09", "before\u0000after", 999, 9999, baseTs - 10000, 2, 300));
+
+    // 10: very long string (1000 characters)
+    testItems.add(
+        buildCatalogItem(
+            "match-10", String.join("", Collections.nCopies(500, "ab")), 123456789L,
+            987654321L, baseTs - 11000, 99, 604800));
+
+    // 11: leading and trailing whitespace
+    testItems.add(
+        buildCatalogItem(
+            "match-11", "  leading and trailing  ", 0, 1, baseTs - 12000, 0, 0));
+
+    // 12: path traversal
+    testItems.add(
+        buildCatalogItem(
+            "match-12", "/data/../../../etc/passwd", 10, 20, baseTs - 13000, 3, 900));
+
+    // 13: S3 URL-like path
+    testItems.add(
+        buildCatalogItem(
+            "match-13", "s3://bucket/prefix/chunk_0001.parquet", 0, 65536, baseTs - 14000, 2,
+            43200));
+
+    // 14: large bigint values near Long.MAX_VALUE
+    testItems.add(
+        buildCatalogItem(
+            "match-14", "/data/large.parquet", Long.MAX_VALUE - 1000, Long.MAX_VALUE - 1,
+            baseTs - 15000, 50, 172800));
+
+    // 15: medium numeric values
+    testItems.add(
+        buildCatalogItem(
+            "match-15", "/data/medium.parquet", 65536, 1_000_000, baseTs - 16000, 42, 86400));
+
+    // 16: form feed and other control chars
+    testItems.add(
+        buildCatalogItem(
+            "match-16", "form\ffeed\u000Bvtab", 2, 3, baseTs - 17000, 1, 1));
+
+    // 17: mixed scripts (Arabic + Hebrew + Thai)
+    testItems.add(
+        buildCatalogItem(
+            "match-17", "/مرحبا/שלום/สวัสดี.parquet", 50, 100, baseTs - 18000, 1, 7200));
+
+    // 18: all ASCII printable special characters
+    testItems.add(
+        buildCatalogItem(
+            "match-18", "!@#$%^&*()_+-=[]{}|;':\",./<>?`~", 0, 0, baseTs - 19000, 0, 0));
+
+    // 19: only whitespace types
+    testItems.add(
+        buildCatalogItem(
+            "match-19", " \t\n\r\f", 0, 0, baseTs - 20000, 0, 0));
+
+    // Write each item to both Alternator table A (via DynamoDB API) and pure CQL table C
+    for (Map<String, AttributeValue> item : testItems) {
+      dynamoClient.putItem(PutItemRequest.builder().tableName(tableA).item(item).build());
+      pureCqlWriter.write(item);
+    }
+
+    // Compare every item field-by-field
+    int failures = 0;
+    StringBuilder failureLog = new StringBuilder();
+
+    for (Map<String, AttributeValue> item : testItems) {
+      String pk = item.get("pk").s();
+
+      Map<String, AttributeValue> fromAlternator = readViaAlternator(tableA, pk);
+      assertNotNull("Item " + pk + " should exist in Alternator table A", fromAlternator);
+
+      Row fromCql = readPureCqlRow(pk);
+      assertNotNull("Item " + pk + " should exist in pure CQL table C", fromCql);
+
+      // Compare text field: chunk_path
+      String altChunkPath = fromAlternator.get("chunk_path").s();
+      String cqlChunkPath = fromCql.getString("chunk_path");
+      if (!Objects.equals(altChunkPath, cqlChunkPath)) {
+        failures++;
+        failureLog
+            .append("MISMATCH pk=").append(pk).append(" field=chunk_path")
+            .append(" alternator=").append(escape(altChunkPath))
+            .append(" pureCql=").append(escape(cqlChunkPath)).append("\n");
+      }
+
+      // Compare bigint fields
+      for (String field : List.of("start_byte_range", "end_byte_range", "last_updated_millis")) {
+        long altVal = Long.parseLong(fromAlternator.get(field).n());
+        long cqlVal = fromCql.getLong(field);
+        if (altVal != cqlVal) {
+          failures++;
+          failureLog
+              .append("MISMATCH pk=").append(pk).append(" field=").append(field)
+              .append(" alternator=").append(altVal)
+              .append(" pureCql=").append(cqlVal).append("\n");
+        }
+      }
+
+      // Compare int fields
+      for (String field : List.of("compression_version", "ttl")) {
+        int altVal = Integer.parseInt(fromAlternator.get(field).n());
+        int cqlVal = fromCql.getInt(field);
+        if (altVal != cqlVal) {
+          failures++;
+          failureLog
+              .append("MISMATCH pk=").append(pk).append(" field=").append(field)
+              .append(" alternator=").append(altVal)
+              .append(" pureCql=").append(cqlVal).append("\n");
+        }
+      }
+    }
+
+    if (failures > 0) {
+      fail(
+          failures
+              + " field mismatches across "
+              + testItems.size()
+              + " items:\n"
+              + failureLog);
+    }
+    LOG.info(
+        "All "
+            + testItems.size()
+            + " items match between Alternator and pure CQL tables across all fields");
+  }
+
+  /** Escapes control characters for readable failure messages. */
+  private static String escape(String s) {
+    if (s == null) return "null";
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i < s.length(); i++) {
+      char c = s.charAt(i);
+      if (c < 0x20) {
+        sb.append(String.format("\\x%02x", (int) c));
+      } else {
+        sb.append(c);
+      }
+    }
+    return sb.toString();
+  }
+
+  private static void createPureCqlTable() {
+    cqlSession.execute(
+        String.format(
+            "CREATE KEYSPACE IF NOT EXISTS \"%s\" "
+                + "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}",
+            pureCqlKeyspace));
+
+    cqlSession.execute(
+        String.format(
+            "CREATE TABLE IF NOT EXISTS \"%s\".\"%s\" ("
+                + "\"pk\" text, "
+                + "\"chunk_path\" text, "
+                + "\"start_byte_range\" bigint, "
+                + "\"end_byte_range\" bigint, "
+                + "\"last_updated_millis\" bigint, "
+                + "\"compression_version\" int, "
+                + "\"ttl\" int, "
+                + "PRIMARY KEY (\"pk\"))",
+            pureCqlKeyspace, tableC));
+  }
+
+  private static LinkedHashMap<String, CqlType> buildCatalogColumns() {
+    LinkedHashMap<String, CqlType> columns = new LinkedHashMap<>();
+    columns.put("pk", CqlType.TEXT);
+    columns.put("chunk_path", CqlType.TEXT);
+    columns.put("start_byte_range", CqlType.BIGINT);
+    columns.put("end_byte_range", CqlType.BIGINT);
+    columns.put("last_updated_millis", CqlType.BIGINT);
+    columns.put("compression_version", CqlType.INT);
+    columns.put("ttl", CqlType.INT);
+    return columns;
+  }
+
+  private Row readPureCqlRow(String pkValue) {
+    return cqlSession
+        .execute(
+            String.format(
+                "SELECT * FROM \"%s\".\"%s\" WHERE \"pk\" = ?", pureCqlKeyspace, tableC),
+            pkValue)
+        .one();
   }
 }
